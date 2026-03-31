@@ -40,7 +40,10 @@ describe('AppController (e2e)', () => {
       expected =
         'Service is not compatible with this operating system. Please use a supported Linux distribution.';
     }
-    const res = await request(app.getHttpServer()).get('/');
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-argument
+    const res = (await request(app.getHttpServer()).get(
+      '/',
+    )) as request.Response;
     expect(res.status).toBe(200);
     expect(res.text).toBe(expected);
   });
