@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import e from 'express';
+// Removed unused import 'e' from 'express'
 import os from 'os';
 @Injectable()
 export class AppService {
