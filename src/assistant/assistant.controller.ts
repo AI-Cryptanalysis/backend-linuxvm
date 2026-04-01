@@ -10,10 +10,12 @@ export class AssistantController {
   async chat(@Body('prompt') prompt: string) {
     console.log(`[AssistantController] Received request: ${prompt}`);
     const result = await this.assistantService.chat(prompt);
-    
+
     // Ensure we never return an empty response
-    return { 
-      response: result || "Luminous Guardian encountered an internal silence. Please repeat your query." 
+    return {
+      response:
+        result ||
+        'Luminous Guardian encountered an internal silence. Please repeat your query.',
     };
   }
 }

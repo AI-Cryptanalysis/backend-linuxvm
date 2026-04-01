@@ -8,4 +8,3 @@ import { NmapService } from './nmap.service';
   exports: [NmapService],
 })
 export class NmapModule {}
-

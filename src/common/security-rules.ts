@@ -4,16 +4,33 @@ export interface SecurityRisk {
 }
 
 export const RISKY_PORTS: Record<number, SecurityRisk> = {
-  21: { level: 'HIGH', message: 'FTP is open — data is in cleartext, disable if possible.' },
-  22: { level: 'MEDIUM', message: 'SSH is open — secure if configured, disable root login.' },
-  23: { level: 'HIGH', message: 'Telnet — non-encrypted protocol, ban absolutely.' },
+  21: {
+    level: 'HIGH',
+    message: 'FTP is open — data is in cleartext, disable if possible.',
+  },
+  22: {
+    level: 'MEDIUM',
+    message: 'SSH is open — secure if configured, disable root login.',
+  },
+  23: {
+    level: 'HIGH',
+    message: 'Telnet — non-encrypted protocol, ban absolutely.',
+  },
   80: { level: 'LOW', message: 'HTTP — no encryption, redirect to HTTPS.' },
   443: { level: 'OK', message: 'HTTPS — secure if certificate is valid.' },
-  3389: { level: 'HIGH', message: 'RDP — frequent target for ransomware, restrict access.' },
-  8080: { level: 'MEDIUM', message: 'Alternative HTTP — often unsecured services.' },
+  3389: {
+    level: 'HIGH',
+    message: 'RDP — frequent target for ransomware, restrict access.',
+  },
+  8080: {
+    level: 'MEDIUM',
+    message: 'Alternative HTTP — often unsecured services.',
+  },
 };
 
-export function assessRisks(parsedPorts: { port: number; service: string }[]): SecurityRisk[] {
+export function assessRisks(
+  parsedPorts: { port: number; service: string }[],
+): SecurityRisk[] {
   return parsedPorts
     .filter((p) => RISKY_PORTS[p.port])
     .map((p) => ({

@@ -1,10 +1,13 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import Groq from 'groq-sdk';
+import {
+  ChatCompletionMessageParam,
+  ChatCompletionTool,
+} from 'groq-sdk/resources/chat/completions';
 import * as dotenv from 'dotenv';
 import * as path from 'path';
 import { NmapService } from '../nmap/nmap.service';
-import { assessRisks, calculateSecurityScore } from '../common/security-rules';
 
 @Injectable()
 export class AssistantService {
@@ -19,7 +22,10 @@ export class AssistantService {
   }
 
   private initModel(): boolean {
-    dotenv.config({ path: path.resolve(process.cwd(), '.env'), override: true });
+    dotenv.config({
+      path: path.resolve(process.cwd(), '.env'),
+      override: true,
+    });
     const apiKey = process.env.GROQ_API_KEY;
     if (!apiKey) {
       this.client = null;
@@ -35,8 +41,8 @@ export class AssistantService {
     }
 
     const modelName = process.env.GROQ_MODEL || 'llama-3.3-70b-versatile';
-    
-    const tools: any[] = [
+
+    const tools: ChatCompletionTool[] = [
       {
         type: 'function',
         function: {
@@ -96,27 +102,29 @@ export class AssistantService {
          - **PROTECTIVE_ACTIONS**: Clear steps to secure the system.
     `;
 
-    let messages: any[] = [
+    const messages: ChatCompletionMessageParam[] = [
       { role: 'system', content: systemPrompt },
-      { role: 'user', content: prompt }
+      { role: 'user', content: prompt },
     ];
 
     try {
-      let response = await this.client.chat.completions.create({
+      const response = await this.client.chat.completions.create({
         model: modelName,
         messages: messages,
         tools: tools,
       });
 
-      let responseMessage = response.choices[0].message;
+      const responseMessage = response.choices[0].message;
 
       if (responseMessage.tool_calls) {
-        messages.push(responseMessage);
-        
+        messages.push(responseMessage as unknown as ChatCompletionMessageParam);
+
         for (const toolCall of responseMessage.tool_calls) {
           const functionName = toolCall.function.name;
-          const functionArgs = JSON.parse(toolCall.function.arguments);
-          let result = "";
+          const functionArgs = JSON.parse(toolCall.function.arguments) as {
+            target: string;
+          };
+          let result = '';
 
           if (functionName === 'nmap_quick_scan') {
             result = await this.nmapService.quickScan(functionArgs.target);
@@ -131,7 +139,7 @@ export class AssistantService {
             role: 'tool',
             name: functionName,
             content: result,
-          });
+          } as ChatCompletionMessageParam);
         }
 
         const finalResponse = await this.client.chat.completions.create({
@@ -139,13 +147,18 @@ export class AssistantService {
           messages: messages,
         });
 
-        return finalResponse.choices[0]?.message?.content || 'Security Report generation failed.';
+        return (
+          finalResponse.choices[0]?.message?.content ||
+          'Security Report generation failed.'
+        );
       }
 
       return responseMessage.content || 'Guardian Ready.';
-    } catch (error) {
-      this.logger.error(`Groq AI Error: ${error.message}`);
-      return `ALERT: Security Intelligence Failure. Original error: ${error.message}`;
+    } catch (error: any) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      this.logger.error(`Groq AI Error: ${errorMessage}`);
+      return `ALERT: Security Intelligence Failure. Original error: ${errorMessage}`;
     }
   }
 }

@@ -8,13 +8,16 @@ export class NmapController {
   @Get('scan')
   async runScan(@Query('target') target: string): Promise<string> {
     if (!target) {
-      throw new BadRequestException('Target is required (e.g., /nmap/scan?target=127.0.0.1)');
+      throw new BadRequestException(
+        'Target is required (e.g., /nmap/scan?target=127.0.0.1)',
+      );
     }
 
     try {
       return await this.nmapService.quickScan(target);
     } catch (error) {
-      throw new BadRequestException(error.message);
+      const message = error instanceof Error ? error.message : String(error);
+      throw new BadRequestException(message);
     }
   }
 }
