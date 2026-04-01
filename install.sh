@@ -32,7 +32,15 @@ echo -e "${YELLOW}Detected OS: $OS${NC}"
 
 # Update package lists
 echo -e "${YELLOW}Updating package lists...${NC}"
-apt-get update
+
+# Disable CD-ROM repository if it exists and causes issues
+if grep -q "cdrom:" /etc/apt/sources.list; then
+    echo -e "${YELLOW}Notice: Disabling CD-ROM repository to prevent update errors...${NC}"
+    sed -i 's/^deb cdrom:/# deb cdrom:/g' /etc/apt/sources.list
+fi
+
+# Run update and ignore errors to proceed even if some repositories are unavailable
+apt-get update || echo -e "${RED}Warning: Some package lists failed to update. Proceeding with installation...${NC}"
 
 install_if_missing() {
     local tool=$1
