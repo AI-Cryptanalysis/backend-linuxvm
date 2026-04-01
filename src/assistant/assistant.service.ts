@@ -4,6 +4,7 @@ import Groq from 'groq-sdk';
 import * as dotenv from 'dotenv';
 import * as path from 'path';
 import { NmapService } from '../nmap/nmap.service';
+import { assessRisks, calculateSecurityScore } from '../common/security-rules';
 
 @Injectable()
 export class AssistantService {
@@ -28,14 +29,13 @@ export class AssistantService {
     return true;
   }
 
-  async chat(prompt: string, context?: string): Promise<string> {
+  async chat(prompt: string): Promise<string> {
     if (!this.initModel() || !this.client) {
       return 'Groq Brain Offline: Please check your API key.';
     }
 
     const modelName = process.env.GROQ_MODEL || 'llama-3.3-70b-versatile';
     
-    // Simplified tool definition to prevent AI syntax errors
     const tools: any[] = [
       {
         type: 'function',
@@ -51,75 +51,101 @@ export class AssistantService {
           },
         },
       },
+      {
+        type: 'function',
+        function: {
+          name: 'hydra_brute_force',
+          description: 'Test for common weak passwords on SSH (Port 22).',
+          parameters: {
+            type: 'object',
+            properties: {
+              target: { type: 'string', description: 'Target to test.' },
+            },
+            required: ['target'],
+          },
+        },
+      },
+      {
+        type: 'function',
+        function: {
+          name: 'nikto_web_scan',
+          description: 'Scan a web server for vulnerabilities.',
+          parameters: {
+            type: 'object',
+            properties: {
+              target: { type: 'string', description: 'Target URL or IP.' },
+            },
+            required: ['target'],
+          },
+        },
+      },
     ];
 
     const systemPrompt = `
-      You are "Luminous Guardian", a Cybersecurity Expert.
-      You have access to a tool named 'nmap_quick_scan'. 
+      You are "Luminous Guardian", a Cybersecurity Expert analyst (AspisProject).
+      Your goal is to perform security analysis and provide a structured tactical report.
       
-      When a user asks to scan something, use the tool. 
-      DO NOT try to write your own tags like <function>. Use the built-in tool calling system.
-      
-      Formatting Rules:
-      - ALWAYS use Markdown.
-      - Use Tables for scan results.
-      - Use Bold Headers for sections.
+      RULES:
+      1. ALWAYS use the tools if a scan or test is requested.
+      2. If you find results, calculate a SECURITY SCORE (0-100) based on risks.
+      3. Format your response into these sections:
+         - **TACTICAL_OVERVIEW**: High-level summary of the target's risk.
+         - **SECURITY_SCORE**: A number between 0 and 100.
+         - **RISK_LEVEL**: CRITICAL | HIGH | MEDIUM | LOW.
+         - **VULNERABILITIES**: A table showing Port, Service, Risk, and Recommendation.
+         - **PROTECTIVE_ACTIONS**: Clear steps to secure the system.
     `;
 
-    let messages: any[] = [{ role: 'system', content: systemPrompt }];
-    if (context) messages.push({ role: 'system', content: `Context: ${context}` });
-    messages.push({ role: 'user', content: prompt });
+    let messages: any[] = [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: prompt }
+    ];
 
     try {
       let response = await this.client.chat.completions.create({
         model: modelName,
         messages: messages,
         tools: tools,
-        // tool_choice: 'auto' is usually fine, but force 'auto' clearly
       });
 
       let responseMessage = response.choices[0].message;
 
-      // Handle the case where the AI wants to use a tool
       if (responseMessage.tool_calls) {
         messages.push(responseMessage);
         
         for (const toolCall of responseMessage.tool_calls) {
           const functionName = toolCall.function.name;
           const functionArgs = JSON.parse(toolCall.function.arguments);
+          let result = "";
 
           if (functionName === 'nmap_quick_scan') {
-            const scanResult = await this.nmapService.quickScan(functionArgs.target);
-            messages.push({
-              tool_call_id: toolCall.id,
-              role: 'tool',
-              name: functionName,
-              content: scanResult,
-            });
+            result = await this.nmapService.quickScan(functionArgs.target);
+          } else if (functionName === 'hydra_brute_force') {
+            result = await this.nmapService.runHydra(functionArgs.target);
+          } else if (functionName === 'nikto_web_scan') {
+            result = await this.nmapService.runNikto(functionArgs.target);
           }
+
+          messages.push({
+            tool_call_id: toolCall.id,
+            role: 'tool',
+            name: functionName,
+            content: result,
+          });
         }
 
-        // Final response after tool execution
         const finalResponse = await this.client.chat.completions.create({
           model: modelName,
           messages: messages,
         });
 
-        return finalResponse.choices[0]?.message?.content || 'No analysis provided.';
+        return finalResponse.choices[0]?.message?.content || 'Security Report generation failed.';
       }
 
-      return responseMessage.content || 'I cannot process that request right now.';
+      return responseMessage.content || 'Guardian Ready.';
     } catch (error) {
       this.logger.error(`Groq AI Error: ${error.message}`);
-      // Special check for tool errors
-      if (error.message.includes('tool_call')) {
-         return "The Luminous Guardian is recalibrating its scanning sensors. Please try rephrasing your scan request (e.g., 'Scan 127.0.0.1').";
-      }
-      return `AI Error: ${error.message}`;
+      return `ALERT: Security Intelligence Failure. Original error: ${error.message}`;
     }
-  }
-
-  async analyzeScan(toonData: string): Promise<string> {
-    return this.chat(`Analyze this: ${toonData}`);
   }
 }
