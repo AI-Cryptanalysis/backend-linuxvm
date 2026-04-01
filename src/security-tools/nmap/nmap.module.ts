@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
-import { NmapController } from './nmap.controller';
 import { NmapService } from './nmap.service';
+import { NmapController } from './nmap.controller';
 
 @Module({
   controllers: [NmapController],

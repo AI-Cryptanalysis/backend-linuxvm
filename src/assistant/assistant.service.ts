@@ -7,7 +7,9 @@ import {
 } from 'groq-sdk/resources/chat/completions';
 import * as dotenv from 'dotenv';
 import * as path from 'path';
-import { NmapService } from '../nmap/nmap.service';
+import { NmapService } from '../security-tools/nmap/nmap.service';
+import { HydraService } from '../security-tools/hydra/hydra.service';
+import { NiktoService } from '../security-tools/nikto/nikto.service';
 
 @Injectable()
 export class AssistantService {
@@ -17,6 +19,8 @@ export class AssistantService {
   constructor(
     private configService: ConfigService,
     private nmapService: NmapService,
+    private hydraService: HydraService,
+    private niktoService: NiktoService,
   ) {
     this.initModel();
   }
@@ -127,11 +131,11 @@ export class AssistantService {
           let result = '';
 
           if (functionName === 'nmap_quick_scan') {
-            result = await this.nmapService.quickScan(functionArgs.target);
+            result = await this.nmapService.execute(functionArgs.target);
           } else if (functionName === 'hydra_brute_force') {
-            result = await this.nmapService.runHydra(functionArgs.target);
+            result = await this.hydraService.execute(functionArgs.target);
           } else if (functionName === 'nikto_web_scan') {
-            result = await this.nmapService.runNikto(functionArgs.target);
+            result = await this.niktoService.execute(functionArgs.target);
           }
 
           messages.push({
