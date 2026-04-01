@@ -18,7 +18,7 @@ export class AppService {
     if (platform === 'linux') {
       // Try to detect Kali or Parrot by release string
       if (release.includes('kali')) {
-        return 'Service is healthy on Kali Linux!';
+        return 'AI Security Assistant: Active and healthy on Kali Linux! (Ready for duty)';
       }
       if (release.includes('parrot')) {
         return 'Service is healthy on Parrot OS!';
