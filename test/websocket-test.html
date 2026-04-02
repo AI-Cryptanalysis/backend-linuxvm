@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Luminous Guardian — WebSocket Test</title>
+  <script src="https://cdn.socket.io/4.7.4/socket.io.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #0a0a12;
+      color: #e0e0ff;
+      font-family: 'Courier New', monospace;
+      padding: 24px;
+    }
+    h1 { color: #7b8fff; margin-bottom: 16px; font-size: 1.2rem; letter-spacing: 2px; }
+    .controls { display: flex; gap: 12px; margin-bottom: 20px; }
+    input {
+      flex: 1; padding: 10px 14px;
+      background: #12122a; border: 1px solid #333366;
+      color: #e0e0ff; border-radius: 6px; font-family: inherit;
+    }
+    button {
+      padding: 10px 20px; border: none; border-radius: 6px;
+      background: #4a5fff; color: #fff; cursor: pointer; font-family: inherit;
+      transition: background 0.2s;
+    }
+    button:hover { background: #6a7fff; }
+    button:disabled { background: #333; cursor: not-allowed; }
+    #terminal {
+      background: #08080f; border: 1px solid #1a1a3a;
+      border-radius: 8px; padding: 16px;
+      height: 65vh; overflow-y: auto;
+      white-space: pre-wrap; font-size: 0.82rem; line-height: 1.6;
+    }
+    .status  { color: #7b8fff; }
+    .tool    { color: #33ff99; }
+    .ai      { color: #e0e0ff; }
+    .error   { color: #ff4466; }
+    .system  { color: #555588; font-style: italic; }
+    #badge {
+      display: inline-block; padding: 4px 10px; border-radius: 99px;
+      font-size: 0.75rem; margin-bottom: 12px; background: #1a1a3a; color: #555;
+    }
+    #badge.connected { background: #0a2a1a; color: #33ff99; }
+    #badge.scanning  { background: #1a1a2a; color: #7b8fff; }
+  </style>
+</head>
+<body>
+  <h1>⚡ LUMINOUS GUARDIAN — WebSocket Test Client</h1>
+  <div id="badge">● DISCONNECTED</div>
+
+  <div class="controls">
+    <input id="prompt" type="text"
+      placeholder='Try: "Scan 127.0.0.1 for open ports" or "What is SQL injection?"'
+      value="Scan 127.0.0.1 for open ports" />
+    <button id="sendBtn" onclick="sendScan()" disabled>Send Scan</button>
+    <button onclick="clearTerminal()">Clear</button>
+  </div>
+
+  <div id="terminal"></div>
+
+  <script>
+    const BACKEND_URL = 'http://localhost:5070';
+    const terminal = document.getElementById('terminal');
+    const badge    = document.getElementById('badge');
+    const sendBtn  = document.getElementById('sendBtn');
+
+    // ── Connect to backend WebSocket ─────────────────────────────────────────
+    const socket = io(BACKEND_URL, { transports: ['websocket'] });
+
+    function log(text, cls = '') {
+      const span = document.createElement('span');
+      span.className = cls;
+      span.textContent = text;
+      terminal.appendChild(span);
+      terminal.scrollTop = terminal.scrollHeight;
+    }
+
+    function clearTerminal() { terminal.innerHTML = ''; }
+
+    // ── Socket lifecycle events ──────────────────────────────────────────────
+    socket.on('connect', () => {
+      badge.textContent = '● CONNECTED  id:' + socket.id;
+      badge.className = 'connected';
+      sendBtn.disabled = false;
+      log('[SYSTEM] WebSocket connected to ' + BACKEND_URL + '\n', 'system');
+    });
+
+    socket.on('disconnect', () => {
+      badge.textContent = '● DISCONNECTED';
+      badge.className = '';
+      sendBtn.disabled = true;
+      log('\n[SYSTEM] WebSocket disconnected\n', 'system');
+    });
+
+    socket.on('connected', (msg) => {
+      log('[GUARDIAN] ' + msg.message + '\n', 'system');
+    });
+
+    // ── Scan event handlers ──────────────────────────────────────────────────
+    socket.on('scan:status', (msg) => {
+      log('\n' + msg.data + '\n', 'status');
+    });
+
+    socket.on('scan:tool', (msg) => {
+      log(msg.data, 'tool');                  // raw tool output, no extra newline
+    });
+
+    socket.on('scan:ai', (msg) => {
+      log(msg.data, 'ai');                    // streaming tokens — no newlines between
+    });
+
+    socket.on('scan:complete', (msg) => {
+      badge.className = 'connected';
+      badge.textContent = '● CONNECTED';
+      sendBtn.disabled = false;
+      log('\n\n[GUARDIAN] ✅ Scan complete.\n', 'system');
+    });
+
+    socket.on('scan:error', (msg) => {
+      badge.className = 'connected';
+      sendBtn.disabled = false;
+      log('\n[ERROR] ' + msg.data + '\n', 'error');
+    });
+
+    // ── Send scan ────────────────────────────────────────────────────────────
+    function sendScan() {
+      const prompt = document.getElementById('prompt').value.trim();
+      if (!prompt) return;
+
+      sendBtn.disabled = true;
+      badge.className = 'scanning';
+      badge.textContent = '● SCANNING...';
+
+      log('\n─────────────────────────────────────────\n', 'system');
+      log('[YOU] ' + prompt + '\n', 'system');
+
+      socket.emit('start_scan', { prompt });
+    }
+
+    // Allow Enter key to send
+    document.getElementById('prompt').addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') sendScan();
+    });
+  </script>
+</body>
+</html>

@@ -11,6 +11,9 @@ import { NmapService } from '../security-tools/nmap/nmap.service';
 import { HydraService } from '../security-tools/hydra/hydra.service';
 import { NiktoService } from '../security-tools/nikto/nikto.service';
 
+// ─── Emit function type: (socketEvent, payload) => void ─────────────────────
+type EmitFn = (event: string, data: string) => void;
+
 @Injectable()
 export class AssistantService {
   private readonly logger = new Logger(AssistantService.name);
@@ -25,6 +28,7 @@ export class AssistantService {
     this.initModel();
   }
 
+  // ─── Hot-reload API key from .env on every call ──────────────────────────
   private initModel(): boolean {
     dotenv.config({
       path: path.resolve(process.cwd(), '.env'),
@@ -39,14 +43,9 @@ export class AssistantService {
     return true;
   }
 
-  async chat(prompt: string): Promise<string> {
-    if (!this.initModel() || !this.client) {
-      return 'Groq Brain Offline: Please check your API key.';
-    }
-
-    const modelName = process.env.GROQ_MODEL || 'llama-3.3-70b-versatile';
-
-    const tools: ChatCompletionTool[] = [
+  // ─── Shared tool definitions (used by both chat paths) ───────────────────
+  private getTools(): ChatCompletionTool[] {
+    return [
       {
         type: 'function',
         function: {
@@ -90,8 +89,11 @@ export class AssistantService {
         },
       },
     ];
+  }
 
-    const systemPrompt = `
+  // ─── Shared system prompt ─────────────────────────────────────────────────
+  private getSystemPrompt(): string {
+    return `
       You are "Luminous Guardian", a Cybersecurity Expert analyst (AspisProject).
       Your goal is to perform security analysis and provide a structured tactical report.
       
@@ -105,6 +107,20 @@ export class AssistantService {
          - **VULNERABILITIES**: A table showing Port, Service, Risk, and Recommendation.
          - **PROTECTIVE_ACTIONS**: Clear steps to secure the system.
     `;
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PATH 1 — REST (blocking, unchanged)
+  // Used by: POST /assistant/chat
+  // ═══════════════════════════════════════════════════════════════════════════
+  async chat(prompt: string): Promise<string> {
+    if (!this.initModel() || !this.client) {
+      return 'Groq Brain Offline: Please check your API key.';
+    }
+
+    const modelName = process.env.GROQ_MODEL || 'llama-3.3-70b-versatile';
+    const tools = this.getTools();
+    const systemPrompt = this.getSystemPrompt();
 
     const messages: ChatCompletionMessageParam[] = [
       { role: 'system', content: systemPrompt },
@@ -163,6 +179,140 @@ export class AssistantService {
         error instanceof Error ? error.message : String(error);
       this.logger.error(`Groq AI Error: ${errorMessage}`);
       return `ALERT: Security Intelligence Failure. Original error: ${errorMessage}`;
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PATH 2 — WebSocket (streaming, real-time)
+  // Used by: ScanGateway → socket 'start_scan' event
+  //
+  // Each step emits an event to the client via the emit() callback:
+  //   scan:status  — human-readable progress message
+  //   scan:tool    — live line of raw tool output (nmap/hydra/nikto stdout)
+  //   scan:ai      — one streaming token from the AI report
+  //   scan:complete — the full assembled report (for storage/reference)
+  //   scan:error   — something went wrong
+  // ═══════════════════════════════════════════════════════════════════════════
+  async chatStream(prompt: string, emit: EmitFn): Promise<void> {
+    if (!this.initModel() || !this.client) {
+      emit('scan:error', 'Groq Brain Offline: Please check your API key.');
+      return;
+    }
+
+    const modelName = process.env.GROQ_MODEL || 'llama-3.3-70b-versatile';
+    const tools = this.getTools();
+    const systemPrompt = this.getSystemPrompt();
+
+    const messages: ChatCompletionMessageParam[] = [
+      { role: 'system', content: systemPrompt },
+      { role: 'user', content: prompt },
+    ];
+
+    try {
+      // ── Round 1: Ask AI what tools to run (not streamed — need full response) ──
+      emit('scan:status', '🤖 Luminous Guardian is analyzing your request...');
+
+      const response = await this.client.chat.completions.create({
+        model: modelName,
+        messages,
+        tools,
+      });
+
+      const responseMessage = response.choices[0].message;
+
+      // ── Tool execution loop ──────────────────────────────────────────────────
+      if (responseMessage.tool_calls) {
+        messages.push(responseMessage as unknown as ChatCompletionMessageParam);
+
+        for (const toolCall of responseMessage.tool_calls) {
+          const functionName = toolCall.function.name;
+          const functionArgs = JSON.parse(toolCall.function.arguments) as {
+            target: string;
+          };
+
+          emit(
+            'scan:status',
+            `⚡ Running ${functionName} on ${functionArgs.target}...`,
+          );
+
+          // Get the right streaming generator
+          let generator: AsyncGenerator<string> | null = null;
+
+          if (functionName === 'nmap_quick_scan') {
+            generator = this.nmapService.executeStream(functionArgs.target);
+          } else if (functionName === 'hydra_brute_force') {
+            generator = this.hydraService.executeStream(functionArgs.target);
+          } else if (functionName === 'nikto_web_scan') {
+            generator = this.niktoService.executeStream(functionArgs.target);
+          }
+
+          // Stream each line of tool output to the client AND accumulate for AI
+          let fullToolResult = '';
+          if (generator) {
+            for await (const line of generator) {
+              emit('scan:tool', line);        // live terminal line → frontend
+              fullToolResult += line;         // accumulate for Round 2
+            }
+          }
+
+          emit('scan:status', `✅ ${functionName} complete.`);
+
+          // Push tool result into the conversation so AI can analyze it
+          messages.push({
+            tool_call_id: toolCall.id,
+            role: 'tool',
+            name: functionName,
+            content: fullToolResult,
+          } as ChatCompletionMessageParam);
+        }
+
+        // ── Round 2: AI reads tool output, writes report — STREAMED token by token ──
+        emit('scan:status', '📝 AI is generating the security report...');
+
+        const stream = await this.client.chat.completions.create({
+          model: modelName,
+          messages,
+          stream: true,   // ← Groq streams the report token by token
+        });
+
+        let fullReport = '';
+        for await (const chunk of stream) {
+          const token = chunk.choices[0]?.delta?.content || '';
+          if (token) {
+            emit('scan:ai', token);   // each word/token → frontend in real-time
+            fullReport += token;
+          }
+        }
+
+        // Send the fully assembled report as a final event (useful for saving)
+        emit('scan:complete', fullReport);
+        return;
+      }
+
+      // ── No tool calls needed — stream a direct AI reply ─────────────────────
+      emit('scan:status', '📝 Luminous Guardian is responding...');
+
+      const stream = await this.client.chat.completions.create({
+        model: modelName,
+        messages,
+        stream: true,
+      });
+
+      let fullReport = '';
+      for await (const chunk of stream) {
+        const token = chunk.choices[0]?.delta?.content || '';
+        if (token) {
+          emit('scan:ai', token);
+          fullReport += token;
+        }
+      }
+
+      emit('scan:complete', fullReport);
+    } catch (error: any) {
+      const errorMessage =
+        error instanceof Error ? error.message : String(error);
+      this.logger.error(`Groq Streaming Error: ${errorMessage}`);
+      emit('scan:error', `ALERT: Security Intelligence Failure. ${errorMessage}`);
     }
   }
 }

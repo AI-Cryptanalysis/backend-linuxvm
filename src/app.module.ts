@@ -6,6 +6,7 @@ import { AssistantModule } from './assistant/assistant.module';
 import { NmapModule } from './security-tools/nmap/nmap.module';
 import { HydraModule } from './security-tools/hydra/hydra.module';
 import { NiktoModule } from './security-tools/nikto/nikto.module';
+import { GatewayModule } from './gateway/gateway.module';
 
 @Module({
   imports: [
@@ -14,6 +15,7 @@ import { NiktoModule } from './security-tools/nikto/nikto.module';
     NmapModule,
     HydraModule,
     NiktoModule,
+    GatewayModule,   // ← WebSocket server
   ],
   controllers: [AppController],
   providers: [AppService],

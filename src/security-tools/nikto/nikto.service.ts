@@ -10,8 +10,19 @@ export class NiktoService extends BaseSecurityTool {
     super('nikto');
   }
 
+  // ─── REST / old AI path ──────────────────────────────────────────────────
   async execute(target: string): Promise<string> {
     this.logger.log(`Starting Nikto scan on ${target}...`);
     return this.runCommand(`nikto -h ${target} -Tuning 123 -maxtime 30s`);
+  }
+
+  // ─── WebSocket streaming path ─────────────────────────────────────────────
+  async *executeStream(target: string): AsyncGenerator<string> {
+    this.logger.log(`[STREAM] Starting Nikto scan on: ${target}`);
+    yield* this.streamCommand('nikto', [
+      '-h', target,
+      '-Tuning', '123',
+      '-maxtime', '30s',
+    ]);
   }
 }
