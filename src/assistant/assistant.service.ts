@@ -244,7 +244,7 @@ export class AssistantService {
             ([k]) =>
               !toolOutputMessages.find(
                 (m) =>
-                  (m as Record<string, unknown>)?.name ===
+                  (m as unknown as { name?: string }).name ===
                   (k === 'nmap'
                     ? 'nmap_quick_scan'
                     : k === 'hydra'
