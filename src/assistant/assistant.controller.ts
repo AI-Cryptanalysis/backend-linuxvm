@@ -7,9 +7,15 @@ export class AssistantController {
 
   @Post('chat')
   @HttpCode(HttpStatus.OK) // Force a 200 OK instead of 201 or 204
-  async chat(@Body('prompt') prompt: string) {
-    console.log(`[AssistantController] Received request: ${prompt}`);
-    const result = await this.assistantService.chat(prompt);
+  async chat(
+    @Body('prompt') prompt: string,
+    @Body('session_id') sessionId?: string,
+  ) {
+    const sid = sessionId || 'default_session';
+    console.log(
+      `[AssistantController] Received request: \${prompt}, session: \${sid}`,
+    );
+    const result = await this.assistantService.chat(prompt, sid);
 
     // Ensure we never return an empty response
     return {
