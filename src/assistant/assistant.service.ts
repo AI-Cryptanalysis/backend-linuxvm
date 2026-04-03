@@ -107,7 +107,7 @@ export class AssistantService {
       You must converse in French.
       
       CONTEXTE DE LA SESSION EN COURS:
-      \${contextSummary}
+      ${contextSummary}
       
       RULES:
       1. Use the available tools to scan if the user requests it. If they ask about previous results, use the Context.
@@ -146,7 +146,7 @@ export class AssistantService {
         );
         messages.push(responseMessage as unknown as ChatCompletionMessageParam);
 
-        let toolsToRun: { name: string; target: string; id?: string }[] = [];
+        const toolsToRun: { name: string; target: string; id?: string }[] = [];
 
         for (const toolCall of responseMessage.tool_calls) {
           const fnName = toolCall.function.name;
@@ -179,7 +179,7 @@ export class AssistantService {
 
           let rawResult = '';
           chainLog.push(
-            `[+] Lancement de l'outil: \${currentTool.name} sur \${currentTool.target}`,
+            `[+] Lancement de l'outil: ${currentTool.name} sur ${currentTool.target}`,
           );
 
           if (currentTool.name === 'nmap') {
@@ -191,11 +191,11 @@ export class AssistantService {
           }
 
           // In a real scenario we parse it properly. Let's do a fast JSON parse if possible.
-          let parsedResult = {};
+          let parsedResult: Record<string, unknown> = {};
           try {
             // Some tools may return purely JSON structured as string, or we parse it
-            parsedResult = JSON.parse(rawResult);
-          } catch (e) {
+            parsedResult = JSON.parse(rawResult) as Record<string, unknown>;
+          } catch {
             // Fallback for unstructured:
             parsedResult = { raw: rawResult };
           }
@@ -225,7 +225,7 @@ export class AssistantService {
           for (const nextTool of nextTools) {
             if (!toolsToRun.find((t) => t.name === nextTool)) {
               chainLog.push(
-                `[⚙] Chaining automatique: ajout de \${nextTool} à la suite des résultats de \${currentTool.name}.`,
+                `[⚙] Chaining automatique: ajout de ${nextTool} à la suite des résultats de ${currentTool.name}.`,
               );
               toolsToRun.push({ name: nextTool, target: currentTool.target });
             }
@@ -244,7 +244,7 @@ export class AssistantService {
             ([k]) =>
               !toolOutputMessages.find(
                 (m) =>
-                  (m as any).name ===
+                  (m as Record<string, unknown>)?.name ===
                   (k === 'nmap'
                     ? 'nmap_quick_scan'
                     : k === 'hydra'
@@ -289,11 +289,11 @@ export class AssistantService {
       const output = responseMessage.content || 'Guardian Ready.';
       ctx.add_message({ role: 'assistant', content: output });
       return output;
-    } catch (error: any) {
+    } catch (error: unknown) {
       const errorMessage =
         error instanceof Error ? error.message : String(error);
-      this.logger.error(`Groq AI Error: \${errorMessage}`);
-      return `ALERT: Security Intelligence Failure. Original error: \${errorMessage}`;
+      this.logger.error(`Groq AI Error: ${errorMessage}`);
+      return `ALERT: Security Intelligence Failure. Original error: ${errorMessage}`;
     }
   }
 }

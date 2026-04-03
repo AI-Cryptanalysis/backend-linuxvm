@@ -13,26 +13,30 @@ const CHAIN_RULES: Record<string, string[]> = {
 export class ChainingService {
   decideNextTools(
     toolName: string,
-    toolResult: any,
+    toolResult: Record<string, unknown>,
     alreadyRun: string[],
   ): string[] {
     const nextTools = new Set<string>();
 
     if (toolName === 'nmap') {
       try {
-        const ports = toolResult.ports || [];
+        const ports = (toolResult.ports as Record<string, unknown>[]) || [];
         for (const port of ports) {
           if (port.etat !== 'open' && port.state !== 'open') {
             continue;
           }
-          const service = (port.service || port.name || '').toLowerCase();
+          const serviceName = String(
+            (port.service as string | undefined) ||
+              (port.name as string | undefined) ||
+              '',
+          ).toLowerCase();
           for (const [svcKey, tools] of Object.entries(CHAIN_RULES)) {
-            if (service.includes(svcKey)) {
+            if (serviceName.includes(svcKey)) {
               tools.forEach((t) => nextTools.add(t));
             }
           }
         }
-      } catch (e) {
+      } catch {
         // Safe check
       }
     } else if (toolName === 'hydra') {
@@ -40,11 +44,15 @@ export class ChainingService {
     } else if (toolName === 'nikto') {
       try {
         const vulns =
-          toolResult.vulnerabilites || toolResult.vulnerabilities || [];
+          (toolResult.vulnerabilites as any[]) ||
+          (toolResult.vulnerabilities as any[]) ||
+          [];
         if (vulns.length > 0 && !alreadyRun.includes('ssl')) {
           nextTools.add('ssl');
         }
-      } catch (e) {}
+      } catch {
+        // Ignore error
+      }
     }
 
     return Array.from(nextTools).filter((t) => !alreadyRun.includes(t));

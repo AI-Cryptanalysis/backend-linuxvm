@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { ChatCompletionMessageParam } from 'groq-sdk/resources/chat/completions';
 
 export interface ScanResult {
-  [tool: string]: any;
+  [tool: string]: unknown;
 }
 
 export class SessionContext {
@@ -19,7 +19,7 @@ export class SessionContext {
     }
   }
 
-  add_scan_result(tool: string, result: any) {
+  add_scan_result(tool: string, result: unknown) {
     this.scan_results[tool] = result;
     if (!this.tools_run.includes(tool)) {
       this.tools_run.push(tool);
